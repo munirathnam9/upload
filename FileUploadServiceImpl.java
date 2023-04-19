@@ -34,9 +34,9 @@ import com.sym.upload.util.Employee;
 import com.sym.upload.util.FileUploadContstants;
 
 import jakarta.transaction.Transactional;
+import static com.sym.upload.util.FileUploadContstants.THEREAD_POOL_DEFAULT_SIZE;
 
 @Service
-//@Transactional
 public class FileUploadServiceImpl implements FileUploadService {
 
 	private static final Logger logger = LoggerFactory.getLogger(FileUploadServiceImpl.class);
@@ -59,25 +59,13 @@ public class FileUploadServiceImpl implements FileUploadService {
 		try {
 			File newFile = new File(filePath + fileName);
 			file.transferTo(newFile);
-
-			System.out.println("newFile exists -->" + newFile.exists());
-
 			if (newFile.exists()) {
-
 				List<String> readAllLines = Files.readAllLines(Paths.get(filePath + fileName));
-
-				System.out.println(readAllLines);
 				
-				int noOfThreads = readAllLines.size()/1000;
+				pushService = Executors.newFixedThreadPool(THEREAD_POOL_DEFAULT_SIZE);
 				
+				listenService = Executors.newFixedThreadPool(THEREAD_POOL_DEFAULT_SIZE);
 				
-				pushService = Executors.newFixedThreadPool(10);
-				
-				listenService = Executors.newFixedThreadPool(10);
-				
-				 StopWatch watch = new StopWatch();
-			        watch.start();
-
 				readAllLines.parallelStream().filter(line -> !line.contains("emp")).forEach(line -> {
 
 					// to push data to topic
@@ -89,13 +77,7 @@ public class FileUploadServiceImpl implements FileUploadService {
 					
 				});
 				
-				watch.stop();
-		        System.out.println("Total execution time to push messages to topic in millis: "
-		                + watch.getTotalTimeMillis());
-
-				
-
-				logger.info(readAllLines.size() + " file records processed successfully. Total execution time to push messages to topic in seconds: " + (watch.getTotalTimeMillis()/1000));
+				logger.info(readAllLines.size() + " file records processed successfully. ");
 				return fileName;
 			}
 
@@ -107,75 +89,27 @@ public class FileUploadServiceImpl implements FileUploadService {
 	}
 
 	public void pushMessageToTopic(String line) {
-		CompletableFuture<SendResult<String, String>> future = kafkaTemplate.send(FileUploadContstants.TOPIC_NAME, line);
-
+		CompletableFuture<SendResult<String, String>> future = kafkaTemplate.send(FileUploadContstants.TOPIC_NAME,
+				line);
 		future.whenComplete((result, ex) -> {
-
-			if (ex == null) {
-				//System.out.println("Sent message=[" + line + "] with offset=["
-						//+ result.getRecordMetadata().offset() + "]" +"Thread-" + Thread.currentThread().getName());
-			} else {
+			if (ex != null) {
 				System.out.println("Unable to send message=[" + line + "] due to : " + ex.getMessage());
 			}
 
 		});
 	}
 	
-	/*
-	 * class PushThread implements Runnable{
-	 * 
-	 * private String line = null;
-	 * 
-	 * public PushThread(String line){ this.line = line; }
-	 * 
-	 * @Override public void run() { // TODO Auto-generated method stub
-	 * //this.pushMessageToTopic(null);
-	 * 
-	 * CompletableFuture<SendResult<String, String>> future =
-	 * kafkaTemplate.send(FileUploadContstants.TOPIC_NAME, line);
-	 * 
-	 * future.whenComplete((result, ex) -> {
-	 * 
-	 * if (ex == null) { System.out.println("Sent message=[" + line +
-	 * "] with offset=[" + result.getRecordMetadata().offset() + "]"); } else {
-	 * System.out.println("Unable to send message=[" + line + "] due to : " +
-	 * ex.getMessage()); }
-	 * 
-	 * });
-	 * 
-	 * }
-	 * 
-	 * }
-	 */
-
 	@KafkaListener(topics = FileUploadContstants.TOPIC_NAME, groupId = FileUploadContstants.GROUP_ID)
 	public void listenGroupFoo(String message) {
-		//logger.info("Received Message in group  " + message);
 		// to be inserted to DB
-		 StopWatch watch = new StopWatch();
-	        watch.start();
-		
-		 listenService.execute(() -> {
+		listenService.execute(() -> {
 			Employee employee = BeanUtilsNew.convertToBean(message);
-			// employeeRepository.save(employee);
-			//fileUploadRepository.saveEmployee(employee);
 			fileUploadRepository.saveEmployee3(employee);
-			
-		}
-		 
-	);
-		 watch.stop();
-	        System.out.println("Total execution time to push messages to topic in millis: "
-	                + watch.getTotalTimeMillis());	
-		/*
-		 * try { submit.get(); } catch (InterruptedException e) { e.printStackTrace(); }
-		 * catch (ExecutionException e) { e.printStackTrace(); }
-		 */
 
-		
-		
-		
+		}
+
+		);
 
 	}
-
+	
 }
